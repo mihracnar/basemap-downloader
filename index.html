@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Harita İndirme Uygulaması</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.css" />
+    <style>
+        body { 
+            margin: 0; 
+            padding: 0; 
+        }
+        #map { 
+            position: absolute; 
+            top: 0; 
+            bottom: 0; 
+            width: 100%; 
+            height: 100%; 
+        }
+        .button-container { 
+            position: absolute; 
+            bottom: 20px; 
+            left: 50%; 
+            transform: translateX(-50%); 
+            z-index: 1000; 
+        }
+        .button { 
+            background-color: #007bff; 
+            color: white; 
+            padding: 5px 5px; 
+            border: none; 
+            border-radius: 5px; 
+            cursor: pointer; 
+            font-size: 16px;
+        }
+        .button:hover { 
+            background-color: #0056b3; 
+        }
+        .custom-control {
+            width: 30px;
+            height: 30px;
+            background-color: #fff;
+            border: 1px solid rgba(0,0,0,0.0);
+            border-radius: 4px;
+            cursor: pointer;
+            text-align: center;
+        }
+
+        .custom-control:hover {
+            background-color: #f4f4f4;
+        }
+
+        .ratio-control-icon {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            vertical-align: middle;
+            background-size: contain;
+            background-repeat: no-repeat;
+            background-position: center;
+        }
+
+        .ratio-popup {
+            display: none;
+            position: absolute;
+            left: 34px;
+            top: 0;
+            background: white;
+            border: 1px solid rgba(0,0,0,0.2);
+            border-radius: 4px;
+            padding: 0;
+            box-shadow: 0 1px 5px rgba(0,0,0,0.4);
+            min-width: 120px;
+            z-index: 1000;
+        }
+
+        .ratio-option {
+            padding: 6px 10px;
+            cursor: pointer;
+            border-bottom: 1px solid #f4f4f4;
+            font-size: 12px;
+            font-family: "Helvetica Neue", Arial, Helvetica, sans-serif;
+            white-space: nowrap;
+        }
+
+        .ratio-option:last-child {
+            border-bottom: none;
+        }
+
+        .ratio-option:hover {
+            background: #f4f4f4;
+        }
+
+        .ratio-option.active {
+            background: #e6e6e6;
+            font-weight: bold;
+        }
+        #temp-canvas {
+            display: none;
+        }
+    </style>
+    <svg id="ratio-icon" style="display: none;" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+    <path d="M19 12h-2v3h-3v2h5v-5zM7 9h3V7H5v5h2V9zm14-6H3c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h18c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16.01H3V4.99h18v14.02z"/>
+    </svg>
+</head>
+<body>
+    <div id="map"></div>
+    <canvas id="temp-canvas"></canvas>
+    <div class="button-container">
+        <button class="button" onclick="downloadMapImage()">Harita İndir</button>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js"></script>
+    <script src="https://unpkg.com/file-saver@2.0.5/dist/FileSaver.min.js"></script>
+    <script src="https://html2canvas.hertzen.com/dist/html2canvas.min.js"></script>
+    <script>
+        // Harita başlatma
+        const map = L.map('map').setView([41.0082, 28.9784], 13);
+
+        // Genişletilmiş basemap seçenekleri
+        const basemaps = {
+            'CartoLight': L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+                attribution: '© CartoDB'
+            }),
+            'Carto Dark': L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+                attribution: '© CartoDB'
+            }),
+            'ESRI Satellite': L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+                attribution: '© Esri'
+            }),
+            'ESRI Streets': L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', {
+                attribution: '© Esri'
+            }),
+            'ESRI Topo': L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}', {
+                attribution: '© Esri'
+            }),
+            'Google Streets': L.tileLayer('https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', {
+                attribution: '© Google'
+            }),
+            'Google Satellite': L.tileLayer('https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', {
+                attribution: '© Google'
+            }),
+            'Google Terrain': L.tileLayer('https://mt1.google.com/vt/lyrs=p&x={x}&y={y}&z={z}', {
+                attribution: '© Google'
+            }),
+            'Google Hybrid': L.tileLayer('https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', {
+                attribution: '© Google'
+            }),
+            'OpenStreetMap': L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '© OpenStreetMap contributors'
+            })
+        };
+
+        // Varsayılan harita katmanını ekle
+        basemaps.CartoLight.addTo(map);
+
+        // Katman kontrolünü ekle
+        L.control.layers(basemaps).addTo(map);
+
+        // Özel oran kontrolü oluştur
+        const RatioControl = L.Control.extend({
+            options: {
+                position: 'topleft'
+            },
+
+            onAdd: function(map) {
+                const container = L.DomUtil.create('div', 'leaflet-bar leaflet-control');
+                const button = L.DomUtil.create('a', 'custom-control', container);
+                const popup = L.DomUtil.create('div', 'ratio-popup', container);
+                
+            // SVG ikonu ekle
+            button.innerHTML = `
+                <svg class="ratio-control-icon" viewBox="0 0 24 24">
+                    <path d="M19 12h-2v3h-3v2h5v-5zM7 9h3V7H5v5h2V9zm14-6H3c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h18c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16.01H3V4.99h18v14.02z"/>
+                </svg>
+            `;
+            button.href = '#';
+            button.title = 'Çerçeve Oranını Seç';
+            
+            popup.innerHTML = `
+                <div class="ratio-option active" data-ratio="free">Serbest Oran</div>
+                <div class="ratio-option" data-ratio="16:9">16:9</div>
+                <div class="ratio-option" data-ratio="1:1">1:1</div>
+                <div class="ratio-option" data-ratio="4:3">4:3</div>
+            `;
+
+                L.DomEvent.on(button, 'click', function(e) {
+                    L.DomEvent.preventDefault(e);
+                    popup.style.display = popup.style.display === 'none' ? 'block' : 'none';
+                });
+
+                L.DomEvent.on(popup, 'click', function(e) {
+                    if (e.target.classList.contains('ratio-option')) {
+                        const options = popup.getElementsByClassName('ratio-option');
+                        for (let opt of options) {
+                            opt.classList.remove('active');
+                        }
+                        e.target.classList.add('active');
+                        selectedRatio = e.target.getAttribute('data-ratio');
+                        popup.style.display = 'none'; // Seçim yapıldığında popup'ı kapat
+                    }
+                });
+
+                L.DomEvent.on(document, 'click', function(e) {
+                    if (!container.contains(e.target)) {
+                        popup.style.display = 'none';
+                    }
+                });
+
+                L.DomEvent.disableClickPropagation(container);
+                return container;
+            }
+        });
+
+        map.addControl(new RatioControl());
+
+        // Çizim araçları için FeatureGroup
+        let drawnItems = new L.FeatureGroup();
+        map.addLayer(drawnItems);
+
+        // Çizim kontrolü
+        const drawControl = new L.Control.Draw({
+            draw: {
+                polygon: false,
+                circle: false,
+                polyline: false,
+                marker: false,
+                circlemarker: false,
+                rectangle: true
+            },
+            edit: {
+                featureGroup: drawnItems,
+                remove: true
+            }
+        });
+        map.addControl(drawControl);
+
+        // Seçili oran değişkeni
+        let selectedRatio = 'free';
+
+        // Çizim tamamlandığında
+        map.on('draw:created', function(e) {
+            drawnItems.clearLayers();
+            let layer = e.layer;
+            if (selectedRatio !== 'free') {
+                adjustRectangle(layer);
+            }
+            drawnItems.addLayer(layer);
+        });
+
+function adjustRectangle(layer) {
+    if (selectedRatio === 'free') return;
+
+    const bounds = layer.getBounds();
+    const center = bounds.getCenter();
+    
+    // Haritanın merkez noktasındaki piksel ölçeğini al
+    const centerPoint = map.latLngToContainerPoint(center);
+    
+    // Mevcut genişliği piksel olarak hesapla
+    const westPoint = map.latLngToContainerPoint([center.lat, bounds.getWest()]);
+    const eastPoint = map.latLngToContainerPoint([center.lat, bounds.getEast()]);
+    const widthInPixels = eastPoint.x - westPoint.x;
+    
+    // Seçilen orana göre hedef yüksekliği piksel olarak hesapla
+    let targetHeightInPixels;
+    switch(selectedRatio) {
+        case '16:9':
+            targetHeightInPixels = widthInPixels * (9/16);
+            break;
+        case '1:1':
+            targetHeightInPixels = widthInPixels;
+            break;
+        case '4:3':
+            targetHeightInPixels = widthInPixels * (3/4);
+            break;
+        default:
+            return;
+    }
+    
+    // Merkez noktasından yukarı ve aşağı gidecek piksel mesafesini hesapla
+    const halfHeight = targetHeightInPixels / 2;
+    
+    // Pikselleri koordinatlara çevir
+    const northPoint = map.containerPointToLatLng([centerPoint.x, centerPoint.y - halfHeight]);
+    const southPoint = map.containerPointToLatLng([centerPoint.x, centerPoint.y + halfHeight]);
+    
+    // Yeni sınırları ayarla
+    const newBounds = L.latLngBounds(
+        L.latLng(southPoint.lat, bounds.getWest()),
+        L.latLng(northPoint.lat, bounds.getEast())
+    );
+    
+    // Dikdörtgeni güncelle
+    layer.setBounds(newBounds);
+}
+
+// Çizim tamamlandığında veya düzenlendiğinde oranı uygula
+map.on('draw:created', function(e) {
+    drawnItems.clearLayers();
+    let layer = e.layer;
+    if (selectedRatio !== 'free') {
+        adjustRectangle(layer);
+    }
+    drawnItems.addLayer(layer);
+});
+
+map.on('draw:edited', function(e) {
+    e.layers.eachLayer(function(layer) {
+        if (selectedRatio !== 'free') {
+            adjustRectangle(layer);
+        }
+    });
+});
+
+// Harita indirme fonksiyonu
+async function downloadMapImage() {
+    if (drawnItems.getLayers().length === 0) {
+        alert('Lütfen önce bir çerçeve çizin!');
+        return;
+    }
+
+    // Seçili alanın sınırlarını al
+    const bounds = drawnItems.getBounds();
+    
+    // Yüksek çözünürlük için zoom seviyesini ayarla
+    const zoomLevel = map.getZoom() + 1;
+    
+    // Çerçevenin piksel koordinatlarını al
+    const northWest = bounds.getNorthWest();
+    const southEast = bounds.getSouthEast();
+    
+    // Tile koordinatlarını hesapla
+    const topLeftTile = map.project(northWest, zoomLevel).divideBy(256).floor();
+    const bottomRightTile = map.project(southEast, zoomLevel).divideBy(256).floor();
+    
+    // Tam tile'lar için canvas boyutlarını hesapla
+    const tileWidth = (bottomRightTile.x - topLeftTile.x + 1) * 256;
+    const tileHeight = (bottomRightTile.y - topLeftTile.y + 1) * 256;
+    
+    // Geçici canvas oluştur
+    const tempCanvas = document.createElement('canvas');
+    tempCanvas.width = tileWidth;
+    tempCanvas.height = tileHeight;
+    const tempCtx = tempCanvas.getContext('2d');
+    
+    try {
+        // Aktif katmanın URL şablonunu al
+        const activeLayer = Object.values(basemaps).find(layer => map.hasLayer(layer));
+        const urlTemplate = activeLayer._url;
+        
+        // Tüm tile'ları yükle ve çiz
+        const tilePromises = [];
+        
+        for (let x = topLeftTile.x; x <= bottomRightTile.x; x++) {
+            for (let y = topLeftTile.y; y <= bottomRightTile.y; y++) {
+                const tileUrl = L.Util.template(urlTemplate, {
+                    x: x,
+                    y: y,
+                    z: zoomLevel,
+                    r: '',
+                    s: 'a'
+                });
+                
+                const tilePromise = new Promise((resolve, reject) => {
+                    const img = new Image();
+                    img.crossOrigin = 'Anonymous';
+                    
+                    img.onload = () => {
+                        const dx = (x - topLeftTile.x) * 256;
+                        const dy = (y - topLeftTile.y) * 256;
+                        tempCtx.drawImage(img, dx, dy);
+                        resolve();
+                    };
+                    
+                    img.onerror = () => {
+                        console.warn(`Tile yüklenemedi: ${tileUrl}`);
+                        resolve();
+                    };
+                    
+                    img.src = tileUrl;
+                });
+                
+                tilePromises.push(tilePromise);
+            }
+        }
+        
+        // Tüm tile'ların yüklenmesini bekle
+        await Promise.all(tilePromises);
+        
+        // Çerçevenin tam piksel koordinatlarını hesapla
+        const topLeftPixel = map.project(northWest, zoomLevel);
+        const bottomRightPixel = map.project(southEast, zoomLevel);
+        
+        // Kırpılacak alanın koordinatlarını hesapla
+        const cropX = Math.round(topLeftPixel.x - topLeftTile.x * 256);
+        const cropY = Math.round(topLeftPixel.y - topLeftTile.y * 256);
+        const cropWidth = Math.round(bottomRightPixel.x - topLeftPixel.x);
+        const cropHeight = Math.round(bottomRightPixel.y - topLeftPixel.y);
+        
+        // Final canvas oluştur
+        const finalCanvas = document.createElement('canvas');
+        finalCanvas.width = cropWidth;
+        finalCanvas.height = cropHeight;
+        const finalCtx = finalCanvas.getContext('2d');
+        
+        // Kırpılmış görüntüyü çiz
+        finalCtx.drawImage(
+            tempCanvas,
+            cropX, cropY, cropWidth, cropHeight,  // Kaynak koordinatları
+            0, 0, cropWidth, cropHeight           // Hedef koordinatları
+        );
+        
+        // Kırpılmış canvas'ı PNG olarak kaydet
+        finalCanvas.toBlob((blob) => {
+            saveAs(blob, 'harita.png');
+        }, 'image/png', 1.0);
+        
+    } catch (error) {
+        console.error('Harita indirme hatası:', error);
+        alert('Harita indirme sırasında bir hata oluştu. Lütfen tekrar deneyin.');
+    }
+}
+
+    </script>
+</body>
+</html>
